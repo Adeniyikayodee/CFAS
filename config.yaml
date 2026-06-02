@@ -1,0 +1,42 @@
+# What to watch, and when. Edit this; leave the code alone.
+
+location:
+  country: Nigeria
+  county: Kogi            # state / county / district
+  subcounty: Lokoja       # LGA / sub-county / division
+  community: Adankolo      # village / ward
+  landmark: the bridge below the market
+
+window:                   # forward-looking: set start to today or later
+  start: 2026-06-02       # today
+  end: 2026-06-08         # 7-day-ahead window
+  expected_hour: this evening   # plain-language time the risk peaks
+
+# Risk model:  R = alpha*P + beta*V + gamma*theta*mu(theta)
+#   P rainfall forecast (GFS) | V vulnerability (TESSERA) | theta soil moisture (SMAP)
+weights:
+  alpha: 0.40
+  beta: 0.30
+  gamma: 0.30
+
+# Rainfall P now looks ahead via the Google Weather forecast (set
+# GOOGLE_WEATHER_KEY in .env). prob_lean sets how much the chance of rain
+# scales the amount: 0.0 trusts the amount alone, 1.0 trusts amount x probability.
+forecast_prob_lean: 0.35
+
+# Rainfall escalation. A strong forecast raises the band on its own, the way
+# operational flood warning runs a rain trigger beside any composite index.
+# Values are P in 0..1 against 50 mm: 0.60 ~ 30 mm (MEDIUM), 0.90 ~ 45 mm (HIGH).
+# Calibrate per region against real flood records.
+rain_trigger_medium: 0.60
+rain_trigger_high: 0.90
+
+tessera_year: 2024     # TESSERA embeddings are annual; 2024 is global
+aoi_buffer_km: 20
+scale_m: 1000
+alert_from: MEDIUM     # broadcast at MEDIUM and above
+
+# Broadcast languages: any of twi, hausa, bambara, yoruba
+languages:
+  - hausa
+  - yoruba

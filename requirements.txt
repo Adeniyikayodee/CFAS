@@ -1,0 +1,30 @@
+# Core
+earthengine-api>=0.1.386
+geotessera>=0.7
+numpy<2
+geopy>=2.4
+PyYAML>=6.0
+python-dotenv>=1.0
+requests>=2.31
+
+# Translation (NLLB-200)
+transformers>=4.41
+sentencepiece>=0.2
+
+# Voice for radio
+gTTS>=2.5
+
+# Drafting fallback on the edge (Gemma 3 GGUF). Cactus serves the on-device path
+# through its native SDKs and local API.
+# llama-cpp-python>=0.2.77
+
+# Optional: local speech-to-text for the call-in loop (Cactus serves the on-device path)
+# faster-whisper>=1.0
+
+# Optional: SMS relay to radio partners
+# twilio>=9.0
+
+# Tests (offline). pocketsphinx gives a real speech-to-text round trip
+# on the committed sample; the rest of the suite runs on the standard library.
+# pytest>=8.0
+# pocketsphinx>=5.0

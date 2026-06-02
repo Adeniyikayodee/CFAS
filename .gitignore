@@ -1,0 +1,16 @@
+.env
+alerts/
+__pycache__/
+*.pyc
+*.gguf
+*.mp3
+.venv/
+.pytest_cache/
+
+# macOS / editor cruft
+.DS_Store
+.claude/
+
+# TESSERA embedding cache (downloaded by geotessera at runtime)
+global_0.1_degree_representation/
+global_0.1_degree_tiff_all/
