@@ -1,0 +1,41 @@
+{
+  "schema": "cfas-snapshot/1",
+  "fetched_at": "2026-06-16T08:00:00",
+  "location": {
+    "community": "Adankolo",
+    "subcounty": "Lokoja",
+    "county": "Kogi",
+    "country": "Nigeria",
+    "lat": 7.8023,
+    "lon": 6.7333
+  },
+  "tessera": {
+    "year": 2024,
+    "embedding": [
+      0.0123,
+      -0.0456,
+      0.0789,
+      "... 125 more floats ..."
+    ]
+  },
+  "days": {
+    "2026-06-16": {
+      "qpf_mm": 31.2,
+      "prob": 0.9,
+      "soil": 0.41,
+      "source": "google-weather"
+    },
+    "2026-06-17": {
+      "qpf_mm": 8.4,
+      "prob": 0.6,
+      "soil": 0.38,
+      "source": "google-weather"
+    },
+    "2026-06-18": {
+      "qpf_mm": 1.0,
+      "prob": 1.0,
+      "soil": 0.33,
+      "source": "gfs/chirps"
+    }
+  }
+}
