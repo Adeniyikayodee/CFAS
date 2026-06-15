@@ -36,6 +36,14 @@ aoi_buffer_km: 20
 scale_m: 1000
 alert_from: MEDIUM     # broadcast at MEDIUM and above
 
+# Offline-first cache. A run pulls the satellite layers into a local snapshot
+# (OUTDIR/snapshot.json) while it has a connection, then computes, drafts and
+# broadcasts from that snapshot with no network. It refreshes the snapshot when
+# it is older than this many hours and online; --offline runs from it without any
+# network, refusing a stale snapshot unless --allow-stale is passed. Soil moisture
+# and rainfall age, so keep this short; TESSERA is annual and ages slowly.
+snapshot_max_age_hours: 24
+
 # Broadcast languages: any of twi, hausa, bambara, yoruba
 languages:
   - hausa

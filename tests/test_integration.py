@@ -23,9 +23,10 @@ from cfas import run as RUN   # noqa: E402
 
 def _stub_satellite_layers():
     # Hold the satellite layers fixed at dry, low-vulnerability values so the
-    # forecast is the only thing that can move the band.
+    # forecast is the only thing that can move the band. These are the network
+    # reads the snapshot build performs; stubbing them keeps the test offline.
     R.soil_theta = lambda *a, **k: (0.10, 0.05)
-    R.vulnerability_v = lambda *a, **k: 0.10
+    R.fetch_embedding = lambda *a, **k: None   # V falls back to the proxy default
     R.init_ee = lambda *a, **k: None
     R.geocode = lambda *a, **k: (7.80, 6.74)
     R.aoi_of = lambda *a, **k: None
@@ -51,12 +52,14 @@ def test_forecast_drives_pipeline_end_to_end():
         argv = ["run", "--config", str(cfg), "--outdir", str(out)]
         with patch.object(sys, "argv", argv), \
              patch.dict(os.environ, {"GOOGLE_WEATHER_KEY": "FAKE"}), \
-             patch("cfas.run.forecast_index", return_value=fake):
+             patch("cfas.snapshot.forecast_index", return_value=fake):
             try:
                 RUN.main()
             except SystemExit:
                 pass
 
+        # The run fetched a snapshot offline-first, then scored from it.
+        assert (out / "snapshot.json").exists(), "an online run should leave a snapshot"
         rows = {json.loads(l)["date"]: json.loads(l)
                 for l in (out / "assessments.jsonl").read_text().splitlines()}
         # Torrential forecast escalates to HIGH on rain alone, despite dry ground.

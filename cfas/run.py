@@ -26,8 +26,8 @@ import numpy as np
 import yaml
 
 from . import risk as R
+from . import snapshot as SNAP
 from .advisory import ACTIONS, LANGS, SOURCE, Advisor
-from .forecast import forecast_index
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("cfas")
@@ -41,6 +41,7 @@ class Settings:
     weights: tuple; tessera_year: int; buffer_km: float; scale_m: int
     alert_from: str; languages: list; prob_lean: float
     trigger_medium: float; trigger_high: float
+    max_age_hours: float
 
 
 def load_settings(path: Path) -> Settings:
@@ -57,7 +58,8 @@ def load_settings(path: Path) -> Settings:
         alert_from=cfg.get("alert_from", "MEDIUM").upper(), languages=langs,
         prob_lean=float(cfg.get("forecast_prob_lean", 0.35)),
         trigger_medium=float(cfg.get("rain_trigger_medium", 0.60)),
-        trigger_high=float(cfg.get("rain_trigger_high", 0.90)))
+        trigger_high=float(cfg.get("rain_trigger_high", 0.90)),
+        max_age_hours=float(cfg.get("snapshot_max_age_hours", 24)))
 
 
 def load_keys():
@@ -87,7 +89,9 @@ def emit(s: Settings, day: str, risk: R.Risk, advisor: Advisor, outdir: Path):
              "=" * 64, "", "[English]", english, ""]
     for code in s.languages:
         sheet += [f"[{LANGS[code][0]}]", versions[code], ""]
-        advisor.voice(versions[code], LANGS[code][2], str(outdir / f"{base}_{code}.mp3"))
+        audio = advisor.voice(versions[code], LANGS[code][2], str(outdir / f"{base}_{code}.mp3"))
+        if not audio:
+            log.warning("no audio rendered for %s; broadcast sheet still written", LANGS[code][0])
     (outdir / f"{base}_broadcast.txt").write_text("\n".join(sheet))
 
     print("\n" + "=" * 64)
@@ -130,12 +134,74 @@ def listen(advisor: Advisor, audio_dir: Path, lang_code: str | None, outdir: Pat
     print(f"\nLogged {rows} call-in(s) to {ledger}")
 
 
+def _build_snapshot(s, snap_path):
+    # Pull the window's layers online and persist them for offline replay.
+    snap = SNAP.build(s, ee_project=os.environ.get("EE_PROJECT"),
+                      weather_key=os.environ.get("GOOGLE_WEATHER_KEY"),
+                      prob_lean=s.prob_lean, scale=s.scale_m, log=log)
+    SNAP.save(snap_path, snap)
+    return snap
+
+
+def resolve_snapshot(s, snap_path, now, *, max_age, offline, allow_stale):
+    """Pick the snapshot the run will score from, offline-first.
+
+    Fresh snapshot -> use it, no network. Stale or missing -> refresh live and
+    rewrite it; if the network is away, fall back to a stale snapshot with a loud
+    warning so the station still broadcasts. --offline never touches the network
+    and refuses a stale snapshot unless --allow-stale is given, because soil
+    moisture and rainfall lose meaning as they age.
+    """
+    cached = SNAP.load(snap_path)
+    fresh = cached is not None and not SNAP.is_stale(cached, max_age, now)
+
+    if offline:
+        if cached is None:
+            raise SystemExit(f"--offline: no snapshot at {snap_path}. Run "
+                             f"`python -m cfas.run --snapshot` while online first.")
+        if not fresh and not allow_stale:
+            raise SystemExit(
+                f"--offline: snapshot is {SNAP.age_hours(cached, now):.0f} h old "
+                f"(over {max_age:.0f} h). Soil moisture and rainfall go stale; refresh "
+                f"while online, or pass --allow-stale to broadcast from it anyway.")
+        if fresh:
+            log.info("offline: using snapshot from %s", cached["fetched_at"])
+        else:
+            log.warning("offline: running on a STALE snapshot (%.0f h old); soil and "
+                        "rainfall may no longer hold", SNAP.age_hours(cached, now))
+        return cached
+
+    if fresh:
+        log.info("offline-first: using fresh snapshot from %s", cached["fetched_at"])
+        return cached
+    try:
+        snap = _build_snapshot(s, snap_path)
+        log.info("snapshot refreshed and saved to %s", snap_path)
+        return snap
+    except Exception as e:
+        if cached is not None:
+            log.warning("live fetch failed (%s); falling back to STALE snapshot from %s",
+                        e, cached["fetched_at"])
+            return cached
+        raise SystemExit(f"no snapshot and live fetch failed ({e}). Connect and run "
+                         f"`python -m cfas.run --snapshot`.")
+
+
 def main():
     ap = argparse.ArgumentParser(description="CFAS flood-resilience pipeline")
     ap.add_argument("--config", default=str(ROOT / "config.yaml"))
     ap.add_argument("--outdir", default=str(ROOT / "alerts"))
     ap.add_argument("--vuln-head", help="path to a trained (129,) linear probe for V")
     ap.add_argument("--dry-run", action="store_true", help="delivery half only, skips Earth Engine")
+    ap.add_argument("--snapshot", action="store_true",
+                    help="fetch the satellite layers into a local snapshot and exit (sync while online)")
+    ap.add_argument("--offline", action="store_true",
+                    help="never touch the network; compute, draft and broadcast from the snapshot")
+    ap.add_argument("--allow-stale", action="store_true",
+                    help="with --offline, run on a snapshot older than the freshness limit")
+    ap.add_argument("--snapshot-out", help="snapshot file location (default OUTDIR/snapshot.json)")
+    ap.add_argument("--max-age-hours", type=float,
+                    help="freshness limit for the snapshot (default from config, 24)")
     ap.add_argument("--listen", metavar="DIR", help="transcribe listener call-ins from a folder and log them")
     ap.add_argument("--feedback-lang", choices=list(LANGS), help="language of the call-ins (sets STT hint and back-translation)")
     ap.add_argument("--feedback-date", help="observation date for the call-ins (default today)")
@@ -146,7 +212,8 @@ def main():
     advisor = Advisor(cactus_url=os.environ.get("CACTUS_URL"),
                       gemma_model=os.environ.get("GEMMA_MODEL", "gemma-3-it.gguf"),
                       nllb_model=os.environ.get("NLLB_MODEL", "facebook/nllb-200-distilled-600M"),
-                      stt_model=os.environ.get("STT_MODEL", "base"))
+                      stt_model=os.environ.get("STT_MODEL", "base"),
+                      piper_voices=os.environ.get("PIPER_VOICES_DIR"))
 
     if args.listen:
         obs = args.feedback_date or dt.date.today().isoformat()
@@ -154,42 +221,40 @@ def main():
         return
 
     head = np.load(args.vuln_head) if args.vuln_head else None
+    outdir = Path(args.outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    snap_path = Path(args.snapshot_out) if args.snapshot_out else outdir / "snapshot.json"
+    max_age = args.max_age_hours if args.max_age_hours is not None else s.max_age_hours
+    now = dt.datetime.now()
+
+    # --snapshot: refresh the local cache while online, then stop.
+    if args.snapshot:
+        snap = _build_snapshot(s, snap_path)
+        print(f"\nSnapshot for {s.community} written to {snap_path} ({len(snap['days'])} day(s)).")
+        return
+
     log.info("%s, %s | %s to %s | languages: %s", s.community, s.country, s.start, s.end,
              ", ".join(LANGS[l][0] for l in s.languages))
 
-    ee = aoi = lat = lon = None
-    forecast = {}
-    if not args.dry_run:
-        ee = R.init_ee(os.environ.get("EE_PROJECT"))
-        lat, lon = R.geocode(s.country, s.county, s.subcounty, s.community)
-        aoi = R.aoi_of(ee, lat, lon, s.buffer_km)
-        log.info("AOI %.4f, %.4f  (%g km)", lat, lon, s.buffer_km)
+    # The band comes from the snapshot, so live and offline runs share one path.
+    # Dry-run keeps a synthetic band to exercise delivery with no data at all.
+    snap = None if args.dry_run else resolve_snapshot(
+        s, snap_path, now, max_age=max_age, offline=args.offline, allow_stale=args.allow_stale)
 
-        # P looks ahead with the Google Weather forecast when a key is present.
-        # Without it, assess reads the Earth Engine GFS forecast instead.
-        gkey = os.environ.get("GOOGLE_WEATHER_KEY")
-        if gkey:
-            try:
-                span = (s.end - s.start).days + 1
-                forecast = forecast_index(lat, lon, gkey, days=span, prob_lean=s.prob_lean)
-                log.info("Google Weather forecast loaded for %d day(s)", len(forecast))
-            except Exception as e:
-                log.warning("Google Weather forecast unavailable (%s); using GFS", e)
-        else:
-            log.info("No GOOGLE_WEATHER_KEY set; P will read Earth Engine GFS")
-
-    outdir, issued, day = Path(args.outdir), 0, s.start
-    outdir.mkdir(parents=True, exist_ok=True)
+    issued, day = 0, s.start
     ledger = outdir / "assessments.jsonl"
     while day <= s.end:
         d = day.isoformat()
         if args.dry_run:
             risk = R.Risk(0.72, "HIGH", 62.0, 0.41, 0.66, 0.9, 0.82)
         else:
-            risk = R.assess(ee, aoi, lat, lon, d, (day + dt.timedelta(days=1)).isoformat(),
-                            weights=s.weights, tessera_year=s.tessera_year, scale=s.scale_m,
-                            head=head, forecast_p=forecast.get(d),
-                            trigger_medium=s.trigger_medium, trigger_high=s.trigger_high)
+            risk = SNAP.risk_for_day(snap, d, weights=s.weights, head=head,
+                                     prob_lean=s.prob_lean, trigger_medium=s.trigger_medium,
+                                     trigger_high=s.trigger_high)
+            if risk is None:
+                log.warning("%s  no snapshot entry for this day; skipping", d)
+                day += dt.timedelta(days=1)
+                continue
         log.info("%s  band=%s score=%.2f  (rain=%s theta=%s V=%s)",
                  d, risk.band, risk.score, risk.rain_mm, risk.theta, risk.vuln)
         with ledger.open("a") as fh:
