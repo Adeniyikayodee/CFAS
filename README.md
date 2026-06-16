@@ -159,16 +159,16 @@ Next steps stay close to the ground:
 
 ## Limitations
 
-CFAS is honest about what it is: a young system, still earning its trust. A few things to hold in mind before you lean on it.
+A few things to know before relying on CFAS.
 
-- **It forecasts, it does not observe.** The band is a prediction of risk, not a measurement of a flood, and it can be wrong in both directions.
-- **The vulnerability and hydrology are proxies.** Until a trained probe and a real river model land, `V` is a rough read of the terrain, not a calibrated one.
-- **The 65 to 75 percent hit-rate is a projection.** It has not yet been proven against real flood records in the field.
-- **Offline runs lean on the last snapshot.** A snapshot still needs a connection to refresh, and old soil-moisture and rainfall readings can mislead, which is why a stale run warns you.
-- **Translations need a human.** Quality varies by language, every line passes a native speaker before air, and Twi currently rides on Akan.
-- **Offline voices are thin for some languages.** Where Piper has no voice yet, the audio falls back to an English-accented one until a native voice exists.
+- It predicts risk from a forecast. It does not detect a flood as it happens, and the band can be wrong either way.
+- The vulnerability term `V` and the hydrology are proxies. They give a rough read until a trained probe and a river model replace them.
+- The 65 to 75 percent hit-rate is a projection. It has not been tested against real flood records yet.
+- Offline runs use the most recent snapshot. Refreshing it needs a connection, and old soil-moisture and rainfall data can mislead, so a stale run prints a warning.
+- Translations vary in quality by language and need a native speaker to check each line before broadcast. Twi currently uses Akan.
+- Piper does not have a voice for every language. Where one is missing, the audio falls back to an English-accented voice.
 
-In short, CFAS is a tool for the people at the station, not a replacement for official warnings or local judgement. It works best beside both.
+CFAS is meant to support the people at the station, not to replace official warnings or local judgement.
 
 ## Tests
 
