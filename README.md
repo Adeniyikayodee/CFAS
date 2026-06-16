@@ -157,6 +157,19 @@ Next steps stay close to the ground:
 - Benchmark TranslateGemma against NLLB-200 per language, with native speakers choosing the stronger model for each.
 - Fold in community feedback so the warnings keep learning from the people who receive them.
 
+## Limitations
+
+CFAS is honest about what it is: a young system, still earning its trust. A few things to hold in mind before you lean on it.
+
+- **It forecasts, it does not observe.** The band is a prediction of risk, not a measurement of a flood, and it can be wrong in both directions.
+- **The vulnerability and hydrology are proxies.** Until a trained probe and a real river model land, `V` is a rough read of the terrain, not a calibrated one.
+- **The 65 to 75 percent hit-rate is a projection.** It has not yet been proven against real flood records in the field.
+- **Offline runs lean on the last snapshot.** A snapshot still needs a connection to refresh, and old soil-moisture and rainfall readings can mislead, which is why a stale run warns you.
+- **Translations need a human.** Quality varies by language, every line passes a native speaker before air, and Twi currently rides on Akan.
+- **Offline voices are thin for some languages.** Where Piper has no voice yet, the audio falls back to an English-accented one until a native voice exists.
+
+In short, CFAS is a tool for the people at the station, not a replacement for official warnings or local judgement. It works best beside both.
+
 ## Tests
 
 The suite runs offline, with no keys and no model downloads.
