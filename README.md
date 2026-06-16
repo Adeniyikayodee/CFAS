@@ -128,6 +128,8 @@ python -m cfas.run --listen ./callins --feedback-lang hausa
 
 Each call-in lands as one JSON line, with the original transcript kept beside the English so the meaning stays close to how the caller said it. The audio stays on the device, which keeps the loop private by design.
 
+For the Nigerian-language pilots, the transcription can run on **N-ATLAS**, Nigeria's open speech model for Hausa, Yoruba, Igbo and Nigerian-accented English (NCAIR and Awarri, launched at the UN in 2025). It is built for these languages and the way they are actually spoken, and it runs on the same box from downloaded weights, so the call-in loop stays offline. Set `NATLAS_MODEL` to the model id or path to put it ahead of Cactus and Whisper.
+
 ## Measuring it
 
 Trust is the currency of a warning system, and the way to earn it is to show the warnings hold up. Every run writes one band per day to `alerts/assessments.jsonl`, the complete record of what the model called. The call-in loop writes what the community saw. The calibrator joins the two and reports how well they agree.
@@ -208,6 +210,7 @@ Each source maps to the part of the code that applies it.
 8. NLLB Team et al., *Scaling neural machine translation to 200 languages*, Nature 630:841 (2024). Translation and FLORES-200 codes in `advisory.py`.
 9. Ojo et al., *AfroBench*, arXiv:2311.07978 (2024). The reason a native speaker reviews every line, in `advisory.py`.
 10. Radford et al., *Robust Speech Recognition via Large-Scale Weak Supervision (Whisper)*, arXiv:2212.04356 (2022). Local speech-to-text fallback in `advisory.py`.
+10b. NCAIR & Awarri, *N-ATLAS: Nigerian Atlas for Languages & AI at Scale* (2025), open weights on Hugging Face. On-device call-in transcription for Hausa, Yoruba, Igbo and Nigerian-accented English in `advisory.py`.
 11. Buytaert et al., *Citizen science in hydrology and water resources*, Front. Earth Sci. 2:26 (2014). The call-in feedback loop in `run.py`.
 12. Jolliffe & Stephenson, *Forecast Verification: A Practitioner's Guide in Atmospheric Science*, 2nd ed., Wiley (2012). The contingency-table scoring in `calibrate.py`.
 13. WMO & UNDRR, *Global Status of Multi-Hazard Early Warning Systems* (2023). The reach motivation behind the whole pipeline.

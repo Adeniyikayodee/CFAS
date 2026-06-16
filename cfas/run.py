@@ -213,7 +213,8 @@ def main():
                       gemma_model=os.environ.get("GEMMA_MODEL", "gemma-3-it.gguf"),
                       nllb_model=os.environ.get("NLLB_MODEL", "facebook/nllb-200-distilled-600M"),
                       stt_model=os.environ.get("STT_MODEL", "base"),
-                      piper_voices=os.environ.get("PIPER_VOICES_DIR"))
+                      piper_voices=os.environ.get("PIPER_VOICES_DIR"),
+                      natlas_model=os.environ.get("NATLAS_MODEL"))
 
     if args.listen:
         obs = args.feedback_date or dt.date.today().isoformat()
