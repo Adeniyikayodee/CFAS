@@ -9,7 +9,9 @@ notes turned back into text for a feedback loop.
                                      translation to 200 languages," Nature
                                      630:841 (2024); FLORES-200 codes from the
                                      same work
-    voice       gTTS                 Google Translate text-to-speech, for radio
+    voice       gTTS -> Piper        Google TTS for radio when there is a network
+                                     (online), with Piper voicing it fully on the
+                                     device when there is not (rhasspy/piper)
     transcribe  Cactus STT           on device, with Whisper as the local stand-in
                                      (Radford et al., "Robust Speech Recognition
                                      via Large-Scale Weak Supervision,"
@@ -31,6 +33,7 @@ from __future__ import annotations
 
 import os
 from collections import namedtuple
+from pathlib import Path
 
 # Target languages with their FLORES-200 codes (NLLB Team et al., Nature 630:841,
 # 2024). Twi rides on Akan (aka_Latn), the closest entry NLLB covers. The last two
@@ -58,7 +61,7 @@ class Advisor:
 
     def __init__(self, *, cactus_url=None, gemma_model="gemma-3-it.gguf",
                  nllb_model="facebook/nllb-200-distilled-600M", stt_model="base",
-                 transcriber=None):
+                 transcriber=None, piper_voices=None):
         self.cactus_url = cactus_url or os.environ.get("CACTUS_URL")
         self.gemma_model = gemma_model
         self.nllb_model = nllb_model
@@ -67,10 +70,14 @@ class Advisor:
         # taking (audio_path, lang_hint) and returning text. The Cactus and Whisper
         # path stays the default when this is left as the sentinel None.
         self.transcriber = transcriber
+        # piper_voices is a folder of offline ONNX voices for the gTTS fallback,
+        # so the station still airs the warning with no network. None disables it.
+        self.piper_voices = piper_voices or os.environ.get("PIPER_VOICES_DIR")
         self._llama = None
         self._nllb = None
         self._tok = None
         self._whisper = None
+        self._piper = {}
 
     # -- draft (Gemma 3) -----------------------------------------------------
     # Gemma 3 writes the advisory in plain English, grounded in the place, the hour
@@ -235,15 +242,77 @@ class Advisor:
         except Exception:
             return None
 
-    # -- voice (gTTS) --------------------------------------------------------
+    # -- voice: gTTS online, Piper offline -----------------------------------
+    # The broadcast must still find a voice when the tower is down, so synthesis
+    # degrades the way drafting and transcription do: try the networked path first
+    # for its quality, then an on-device engine that needs no connection. gTTS
+    # (Google Translate TTS) gives the better voices but needs the network; Piper
+    # runs fully offline on the edge box (Raspberry-Pi class), so a station cut off
+    # mid-storm can still put the warning on air. Returns the path of the audio
+    # actually written (gTTS writes .mp3, Piper writes .wav), or None when neither
+    # engine could render, so the caller knows what reached the broadcast folder.
+    def voice(self, text: str, gtts_code: str, path: str) -> str | None:
+        return self._voice_gtts(text, gtts_code, path) or self._voice_piper(text, gtts_code, path)
+
     @staticmethod
-    def voice(text: str, gtts_code: str, path: str) -> bool:
+    def _voice_gtts(text, gtts_code, path):
+        # Online path. Falls back to an English voice when the target language has
+        # no gTTS voice, then gives up so Piper can take the offline turn.
         try:
             from gtts import gTTS
-            try:
-                gTTS(text=text, lang=gtts_code, slow=False).save(path)
-            except Exception:
-                gTTS(text=text, lang="en", slow=False).save(path)
-            return True
         except Exception:
-            return False
+            return None
+        for lang in (gtts_code, "en"):
+            try:
+                gTTS(text=text, lang=lang, slow=False).save(path)
+                return path
+            except Exception:
+                continue
+        return None
+
+    def _voice_piper(self, text, gtts_code, path):
+        # Offline path. Piper synthesises on the device with an ONNX voice, so the
+        # advisory still airs with no network (Piper, github.com/rhasspy/piper).
+        # Drop voice models named <gtts_code>.onnx (e.g. ha.onnx, yo.onnx, en.onnx,
+        # where en covers Twi and Bambara) into PIPER_VOICES_DIR; default.onnx, then
+        # any voice present, stand in when a language-specific one is missing. Piper
+        # writes 16-bit PCM WAV, so the output keeps a .wav name rather than label
+        # itself .mp3 and hand the radio software a file that lies about its format.
+        if not self.piper_voices:
+            return None
+        try:
+            model = self._piper_voice(gtts_code)
+            if model is None:
+                return None
+            import wave
+            out = str(Path(path).with_suffix(".wav"))
+            with wave.open(out, "wb") as wav:
+                # Piper's API has shifted across releases; prefer the explicit
+                # WAV writer (>= 1.2) and fall back to the older synthesize(text, wav).
+                if hasattr(model, "synthesize_wav"):
+                    model.synthesize_wav(text, wav)
+                else:
+                    model.synthesize(text, wav)
+            return out
+        except Exception:
+            return None
+
+    def _piper_voice(self, gtts_code):
+        # Load and cache one Piper voice per language code, the way the NLLB and
+        # Whisper models are loaded once and reused across calls. A cached None
+        # records "no voice available" so a missing model is not retried each call.
+        if gtts_code in self._piper:
+            return self._piper[gtts_code]
+        voice = None
+        try:
+            from piper import PiperVoice
+            d = Path(self.piper_voices)
+            onnx = (next((c for c in (d / f"{gtts_code}.onnx", d / "default.onnx")
+                          if c.exists()), None)
+                    or next(iter(sorted(d.glob("*.onnx"))), None))
+            if onnx is not None:
+                voice = PiperVoice.load(str(onnx))
+        except Exception:
+            voice = None
+        self._piper[gtts_code] = voice
+        return voice

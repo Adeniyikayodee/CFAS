@@ -13,6 +13,9 @@ sentencepiece>=0.2
 
 # Voice for radio
 gTTS>=2.5
+# Offline voice fallback for the edge box (no network). Drop ONNX voices into
+# PIPER_VOICES_DIR; see .env.example. Voices download separately from Piper.
+# piper-tts>=1.2
 
 # Drafting fallback on the edge (Gemma 3 GGUF). Cactus serves the on-device path
 # through its native SDKs and local API.

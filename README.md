@@ -39,7 +39,7 @@ Once the band reaches MEDIUM, the message half begins:
 W = Broadcast( NLLB-200( Gemma 3( R, L ) ), L )   for  L in {Twi, Hausa, Bambara, Yoruba}
 ```
 
-Gemma 3 runs on the edge through **Cactus**, the on-device inference engine, so the drafting holds steady even as a storm reaches the nearest tower. The laptop and Raspberry Pi path falls back to a llama.cpp build of Gemma 3, and a plain template stands ready so the pipeline always speaks. Every translated line passes through a native speaker for review before it goes on air.
+Gemma 3 runs on the edge through **Cactus**, the on-device inference engine, so the drafting holds steady even as a storm reaches the nearest tower. The laptop and Raspberry Pi path falls back to a llama.cpp build of Gemma 3, and a plain template stands ready so the pipeline always speaks. The spoken audio comes from gTTS where there is a connection; where there is not, **Piper** voices the advisory fully offline on the same box, so a station cut off mid-storm still airs the warning. Set `PIPER_VOICES_DIR` to a folder of ONNX voices to enable it. Every translated line passes through a native speaker for review before it goes on air.
 
 ## A word on TESSERA
 
@@ -57,6 +57,7 @@ cfas/
 └── cfas/
     ├── risk.py        # satellite layers to a banded score (P, V, theta, mu, R)
     ├── forecast.py    # forward rainfall forecast from the Google Weather API
+    ├── snapshot.py    # local cache of the layers, so the band computes offline
     ├── advisory.py    # score to spoken warning, plus call-in transcription
     ├── calibrate.py   # warnings measured against confirmed call-ins
     └── run.py         # the entrypoint that ties it together
@@ -90,6 +91,19 @@ python -m cfas.run --dry-run
 ```
 
 Each run writes a JSON record, a broadcast sheet, and an MP3 per language into `alerts/`.
+
+## Running offline
+
+The forecast arrives hours before the water, and that is the window CFAS works in. The analysis layers, the rainfall forecast, SMAP soil moisture, the TESSERA tile, all live in the cloud, but they reduce to a handful of small numbers per day plus one 128-dimensional embedding. So CFAS pulls them into a local **snapshot** while it has a connection, then computes the band, drafts, translates and broadcasts from that snapshot with no network at all. Cactus keeps the models on the box; the snapshot keeps the inputs on the box.
+
+```bash
+python -m cfas.run --snapshot     # online: pull the layers into OUTDIR/snapshot.json
+python -m cfas.run --offline      # no network: band, draft, voice from the snapshot
+```
+
+The default run is offline-first: it uses a fresh snapshot if one is on disk, refreshes it live when it is stale and a connection is there, and falls back to the last snapshot with a loud warning when the line is down. The snapshot stores the **raw** inputs, not the finished `P`, `V` and `theta`, so you can re-tune `alpha`, `beta`, `gamma`, `prob_lean`, the rain triggers, even a trained `--vuln-head` probe, and re-band the same snapshot offline without fetching again.
+
+Soil moisture and rainfall lose meaning as they age, so `--offline` refuses a snapshot older than `snapshot_max_age_hours` (default 24) unless you pass `--allow-stale`. TESSERA is annual, so its embedding ages slowly. The pattern in the field is a small cron that runs `--snapshot` whenever there is signal, leaving the station ready to broadcast through the storm that takes the tower down. See `snapshot.example.json` for the shape of the file.
 
 ## Listening back
 

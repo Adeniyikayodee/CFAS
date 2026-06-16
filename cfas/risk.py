@@ -116,31 +116,49 @@ def soil_theta(ee, aoi, start, end, scale):
 
 
 # --- V: vulnerability from TESSERA -----------------------------------------
-def vulnerability_v(lat, lon, year, head=None, default=0.5):
-    """Read the 128-d TESSERA embedding for this tile and map it to V in [0, 1].
+# Vulnerability is read in two steps so the slow, network-bound tile fetch can be
+# cached for offline use while the cheap embedding-to-score map stays pure. V is
+# the slow picture: terrain, watercourses, settlement, the part of risk that
+# shapes where water gathers. TESSERA supplies it as an open, global, annual
+# embedding at 10 m (Feng et al., "TESSERA: Temporal Embeddings of Surface
+# Spectra," arXiv:2506.20380, 2025; served through the GeoTessera library). It
+# opens up the ground that AlphaEarth first mapped (Brown et al., "AlphaEarth
+# Foundations," arXiv:2507.22291, 2025).
+def fetch_embedding(lat, lon, year):
+    """Mean 128-d TESSERA embedding for this tile, or None when unavailable.
 
-    V is the slow picture: terrain, watercourses, settlement, the part of risk
-    that shapes where water gathers. TESSERA supplies it as an open, global,
-    annual embedding at 10 m (Feng et al., "TESSERA: Temporal Embeddings of
-    Surface Spectra," arXiv:2506.20380, 2025; served through the GeoTessera
-    library). It opens up the ground that AlphaEarth first mapped (Brown et al.,
-    "AlphaEarth Foundations," arXiv:2507.22291, 2025).
-
-    Pass `head` as a (129,) array, 128 weights and a bias, from a trained linear
-    probe for a calibrated score. The transparent proxy below keeps the pipeline
-    live and honest until that probe arrives.
+    This is the only network step in V, so the snapshot caches its result and the
+    offline path skips it entirely (see cfas/snapshot.py).
     """
     try:
         from geotessera import GeoTessera
         emb, _, _ = GeoTessera().fetch_embedding(lon=lon, lat=lat, year=year)  # (H, W, 128)
-        vec = emb.reshape(-1, emb.shape[-1]).astype("float32").mean(0)         # (128,)
+        return emb.reshape(-1, emb.shape[-1]).astype("float32").mean(0)        # (128,)
     except Exception:
+        return None
+
+
+def v_from_embedding(vec, head=None, default=0.5):
+    """Map a 128-d embedding to V in [0, 1]. Pure; no network.
+
+    Pass `head` as a (129,) array, 128 weights and a bias, from a trained linear
+    probe for a calibrated score. The transparent proxy below keeps the pipeline
+    live and honest until that probe arrives. A missing embedding reads as the
+    neutral default rather than crashing the score.
+    """
+    if vec is None:
         return default
+    vec = np.asarray(vec, "float32")
     if head is not None:
         w, b = np.asarray(head[:-1], "float32"), float(head[-1])
         return float(1.0 / (1.0 + np.exp(-(vec @ w + b))))
     z = (vec - vec.mean()) / (vec.std() + 1e-6)
     return float(1.0 / (1.0 + np.exp(-(np.linalg.norm(z) / np.sqrt(vec.size) - 1.0))))
+
+
+def vulnerability_v(lat, lon, year, head=None, default=0.5):
+    """Fetch the tile embedding and map it to V. The online convenience wrapper."""
+    return v_from_embedding(fetch_embedding(lat, lon, year), head=head, default=default)
 
 
 def mu(theta, t0=0.6, k=1.0):
@@ -158,19 +176,16 @@ def band_of(score):
     return "HIGH"
 
 
-def assess(ee, aoi, lat, lon, start, end, *, weights, tessera_year, scale, head=None,
-           forecast_p=None, trigger_medium=P_TRIGGER_MEDIUM, trigger_high=P_TRIGGER_HIGH) -> Risk:
-    # R = a*P + b*V + g*theta*mu(theta): the CFAS fusion that folds forecast,
-    # vulnerability and wetness into one score (Adeniyi, CFAS, 2026).
+def fuse(p, v, theta, *, weights, rain_mm, soil,
+         trigger_medium=P_TRIGGER_MEDIUM, trigger_high=P_TRIGGER_HIGH) -> Risk:
+    """Fold the three normalised terms into one banded Risk. Pure; no network.
+
+    R = a*P + b*V + g*theta*mu(theta): the CFAS fusion that folds forecast,
+    vulnerability and wetness into one score (Adeniyi, CFAS, 2026). This is the
+    single source of truth for banding, so a live read and a replay from the
+    offline snapshot produce the same band for the same inputs.
+    """
     a, b, g = weights
-    # P looks ahead. When a Google Weather forecast is supplied for this day we use
-    # it; otherwise we read the Earth Engine GFS forecast, with CHIRPS as fallback.
-    if forecast_p is not None:
-        p, rain_mm = forecast_p["P"], forecast_p["qpf_mm"]
-    else:
-        p, rain_mm = rainfall_p(ee, aoi, start, end, scale)
-    theta, soil = soil_theta(ee, aoi, start, end, scale)
-    v = vulnerability_v(lat, lon, tessera_year, head=head)
     raw = a * p + b * v + g * theta * mu(theta)
     score = min(max(raw / (a + b + g * 2.0), 0.0), 1.0)
     band = band_of(score)
@@ -186,3 +201,18 @@ def assess(ee, aoi, lat, lon, start, end, *, weights, tessera_year, scale, head=
         score = max(score, BANDS[0][1])          # >= LOW/MEDIUM cutoff (0.34)
     return Risk(score=score, band=band, rain_mm=round(rain_mm, 1),
                 soil=round(soil, 3), vuln=round(v, 3), p=round(p, 3), theta=round(theta, 3))
+
+
+def assess(ee, aoi, lat, lon, start, end, *, weights, tessera_year, scale, head=None,
+           forecast_p=None, trigger_medium=P_TRIGGER_MEDIUM, trigger_high=P_TRIGGER_HIGH) -> Risk:
+    # Gather the layers online, then hand them to fuse(). P looks ahead: when a
+    # Google Weather forecast is supplied for this day we use it; otherwise we read
+    # the Earth Engine GFS forecast, with CHIRPS as fallback.
+    if forecast_p is not None:
+        p, rain_mm = forecast_p["P"], forecast_p["qpf_mm"]
+    else:
+        p, rain_mm = rainfall_p(ee, aoi, start, end, scale)
+    theta, soil = soil_theta(ee, aoi, start, end, scale)
+    v = vulnerability_v(lat, lon, tessera_year, head=head)
+    return fuse(p, v, theta, weights=weights, rain_mm=rain_mm, soil=soil,
+                trigger_medium=trigger_medium, trigger_high=trigger_high)
