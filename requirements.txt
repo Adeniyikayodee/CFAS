@@ -24,6 +24,11 @@ gTTS>=2.5
 # Optional: local speech-to-text for the call-in loop (Cactus serves the on-device path)
 # faster-whisper>=1.0
 
+# Optional: N-ATLAS on-device ASR for Hausa, Yoruba, Igbo and Nigerian-accented
+# English (NCAIR + Awarri, open weights on Hugging Face). Runs on the transformers
+# stack above; set NATLAS_MODEL to the model id or path. Reading audio may also need:
+# soundfile>=0.12
+
 # Optional: SMS relay to radio partners
 # twilio>=9.0
 

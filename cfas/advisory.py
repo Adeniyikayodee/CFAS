@@ -12,10 +12,11 @@ notes turned back into text for a feedback loop.
     voice       gTTS -> Piper        Google TTS for radio when there is a network
                                      (online), with Piper voicing it fully on the
                                      device when there is not (rhasspy/piper)
-    transcribe  Cactus STT           on device, with Whisper as the local stand-in
-                                     (Radford et al., "Robust Speech Recognition
-                                     via Large-Scale Weak Supervision,"
-                                     arXiv:2212.04356, 2022)
+    transcribe  N-ATLAS / Cactus     on device: N-ATLAS for Hausa, Yoruba, Igbo and
+                / Whisper            Nigerian-accented English (NCAIR + Awarri, 2025),
+                                     with Cactus and Whisper as fallbacks (Radford et
+                                     al., "Robust Speech Recognition via Large-Scale
+                                     Weak Supervision," arXiv:2212.04356, 2022)
 
 Cactus carries the drafting locally at the station, so the broadcast holds steady
 even as a storm reaches the nearest tower. NLLB-200 renders the advisory in each
@@ -61,7 +62,7 @@ class Advisor:
 
     def __init__(self, *, cactus_url=None, gemma_model="gemma-3-it.gguf",
                  nllb_model="facebook/nllb-200-distilled-600M", stt_model="base",
-                 transcriber=None, piper_voices=None):
+                 transcriber=None, piper_voices=None, natlas_model=None):
         self.cactus_url = cactus_url or os.environ.get("CACTUS_URL")
         self.gemma_model = gemma_model
         self.nllb_model = nllb_model
@@ -73,10 +74,15 @@ class Advisor:
         # piper_voices is a folder of offline ONNX voices for the gTTS fallback,
         # so the station still airs the warning with no network. None disables it.
         self.piper_voices = piper_voices or os.environ.get("PIPER_VOICES_DIR")
+        # natlas_model is a Hugging Face id or local path for N-ATLAS, Nigeria's
+        # open ASR for Hausa, Yoruba, Igbo and Nigerian-accented English. Set it to
+        # transcribe call-ins on the device; left None, transcribe uses Cactus/Whisper.
+        self.natlas_model = natlas_model or os.environ.get("NATLAS_MODEL")
         self._llama = None
         self._nllb = None
         self._tok = None
         self._whisper = None
+        self._natlas = None
         self._piper = {}
 
     # -- draft (Gemma 3) -----------------------------------------------------
@@ -206,14 +212,39 @@ class Advisor:
 
     # -- transcribe (Cactus STT, for the call-in feedback loop) --------------
     def transcribe(self, audio_path: str, lang_hint: str | None = None) -> str:
-        """A listener's voice note to text. Cactus runs speech-to-text on the device
-        (Cactus Compute, 2025), and a local faster-whisper build stands in when
-        Cactus is away (Whisper: Radford et al., arXiv:2212.04356, 2022). The audio
-        stays on the device, which keeps the loop private by design."""
+        """A listener's voice note to text, on the device, which keeps the loop
+        private by design. A deployment can pass its own `transcriber`; otherwise
+        the call-in runs through N-ATLAS first, Nigeria's open speech model for
+        Hausa, Yoruba, Igbo and Nigerian-accented English (NCAIR + Awarri, 2025),
+        then Cactus (Cactus Compute, 2025), then a local faster-whisper build
+        (Whisper: Radford et al., arXiv:2212.04356, 2022). Each backend reports None
+        when it is away, so transcription falls through cleanly and stays offline."""
         if self.transcriber is not None:
             return self.transcriber(audio_path, lang_hint) or ""
-        text = self._stt_cactus(audio_path, lang_hint)
-        return text if text is not None else (self._stt_local(audio_path, lang_hint) or "")
+        for backend in (self._stt_natlas, self._stt_cactus, self._stt_local):
+            text = backend(audio_path, lang_hint)
+            if text is not None:
+                return text
+        return ""
+
+    def _stt_natlas(self, path, lang_hint):
+        # N-ATLAS: Nigeria's open ASR for Hausa, Yoruba, Igbo and Nigerian-accented
+        # English (NCAIR + Awarri, on Hugging Face), built for these languages and
+        # accents where a general model struggles. It runs locally from downloaded
+        # weights, so the call-in loop stays offline. Set NATLAS_MODEL to the model
+        # id or path to switch it on; left unset, transcription uses Cactus/Whisper.
+        # A deployment with a bespoke loader can bypass this through `transcriber`.
+        if not self.natlas_model:
+            return None
+        try:
+            if self._natlas is None:
+                from transformers import pipeline
+                self._natlas = pipeline("automatic-speech-recognition", model=self.natlas_model)
+            out = self._natlas(path)
+            text = out.get("text", "") if isinstance(out, dict) else str(out)
+            return text.strip()
+        except Exception:
+            return None
 
     def _stt_cactus(self, path, lang_hint):
         if not self.cactus_url:
