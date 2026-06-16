@@ -6,13 +6,13 @@ CFAS turns a satellite flood forecast into a spoken warning in a language a fami
 
 ## The problem
 
-Floods are the most frequent and far-reaching of climate disasters, and a warming climate is making the rains that cause them heavier and harder to predict. The communities that live closest to the rivers carry the most of this, and they are often the ones with the least warning.
+Floods are the most frequent and far-reaching of climate disasters, and a warming climate makes the rains that drive them heavier and harder to predict. The communities along the rivers carry the most of this, and they hold the slimmest margin once the water moves.
 
-The forecast is no longer the hard part. Satellites and weather models can see a flood forming days before the water arrives. The failure is in the last stretch: the forecast exists, but it does not reach the household in time, in a language the family understands, over a channel they actually have. A prediction sitting on a server protects no one.
+Forecasting has caught up with the flood. Satellites and weather models now see the water forming days ahead. The work that remains lives in the last stretch: carrying that forecast to the household in time, in a language the family speaks, over a channel they already have. That last stretch is where a forecast becomes protection.
 
-This gap is not new. Early-warning systems were built first for cities, for the official language, for people who are online and reading. The households nearest the water, rural, often off the grid, speaking a language the system never covered, are the ones the warning has always passed over. The WMO calls this the early-warning gap, and it falls hardest on the people most exposed (WMO & UNDRR, 2023).
+For most of its history, early warning reached the cities, the official languages, and the people who are online and reading first. The households nearest the water, rural, often beyond the grid, speaking a language of their own, stand to gain the most as the warning reaches them at last. The WMO calls this stretch the early-warning gap, and closing it counts most for the people most exposed (WMO & UNDRR, 2023).
 
-So the lives lost to floods are rarely lost because no one saw it coming. They are lost because the warning never arrived in a form someone could act on. CFAS is built for that last stretch. It takes a forecast that already exists and carries it the rest of the way home: into a clear risk level, a calm spoken message, the local language, and the radio a family already owns, on a small device at the station closest to them.
+Lives turn on a warning that arrives in a form someone can act on. CFAS lives in that last stretch. It takes a forecast that already exists and carries it the rest of the way home: into a clear risk level, a calm spoken message, the local language, and the radio a family already owns, on a small device at the station closest to them.
 
 ## The idea
 
@@ -41,7 +41,7 @@ R(x) = alpha · P  +  beta · V  +  gamma · theta · mu(theta)
 | `mu(theta)` | saturation multiplier | lifts the soil-moisture term once the ground is already heavy with water |
 | `alpha, beta, gamma` | calibration weights | yours to tune in `config.yaml` |
 
-CFAS looks ahead. The rainfall term reads the Google Weather forecast, up to ten days out, so the score warns of a flood that is coming rather than scoring one that already passed. Set the window in `config.yaml` to today or later, add a `GOOGLE_WEATHER_KEY`, and each day in range carries its own forward forecast. When the key is away, the same term falls back to the Earth Engine GFS forecast, so the pipeline keeps predicting.
+CFAS looks ahead. The rainfall term reads the Google Weather forecast, up to ten days out, so the score warns of a flood while it is still on its way. Set the window in `config.yaml` to today or later, add a `GOOGLE_WEATHER_KEY`, and each day in range carries its own forward forecast. When the key is away, the same term falls back to the Earth Engine GFS forecast, so the pipeline keeps predicting.
 
 Once the band reaches MEDIUM, the message half begins:
 
@@ -49,7 +49,7 @@ Once the band reaches MEDIUM, the message half begins:
 W = Broadcast( NLLB-200( Gemma 3( R, L ) ), L )   for  L in {Twi, Hausa, Bambara, Yoruba}
 ```
 
-Gemma 3 runs on the edge through **Cactus**, the on-device inference engine, so the drafting holds steady even as a storm reaches the nearest tower. The laptop and Raspberry Pi path falls back to a llama.cpp build of Gemma 3, and a plain template stands ready so the pipeline always speaks. The spoken audio comes from gTTS where there is a connection; where there is not, **Piper** voices the advisory fully offline on the same box, so a station cut off mid-storm still airs the warning. Set `PIPER_VOICES_DIR` to a folder of ONNX voices to enable it. Every translated line passes through a native speaker for review before it goes on air.
+Gemma 3 runs on the edge through **Cactus**, the on-device inference engine, so the drafting holds steady even as a storm reaches the nearest tower. The laptop and Raspberry Pi path falls back to a llama.cpp build of Gemma 3, and a plain template stands ready so the pipeline always speaks. The spoken audio comes from gTTS where there is a connection, and **Piper** voices the advisory fully offline on the same box, so a station cut off mid-storm still airs the warning. Set `PIPER_VOICES_DIR` to a folder of ONNX voices to enable it. Every translated line passes through a native speaker for review before it goes on air.
 
 ## A word on TESSERA
 
@@ -104,14 +104,14 @@ Each run writes a JSON record, a broadcast sheet, and an MP3 per language into `
 
 ## Running offline
 
-The forecast arrives hours before the water, and that is the window CFAS works in. The analysis layers, the rainfall forecast, SMAP soil moisture, the TESSERA tile, all live in the cloud, but they reduce to a handful of small numbers per day plus one 128-dimensional embedding. So CFAS pulls them into a local **snapshot** while it has a connection, then computes the band, drafts, translates and broadcasts from that snapshot with no network at all. Cactus keeps the models on the box; the snapshot keeps the inputs on the box.
+The forecast arrives hours before the water, and that is the window CFAS works in. The analysis layers, the rainfall forecast, SMAP soil moisture, the TESSERA tile, all live in the cloud, but they reduce to a handful of small numbers per day plus one 128-dimensional embedding. So CFAS pulls them into a local **snapshot** while it has a connection, then computes the band, drafts, translates and broadcasts from that snapshot entirely offline. Cactus keeps the models on the box, and the snapshot keeps the inputs on the box.
 
 ```bash
 python -m cfas.run --snapshot     # online: pull the layers into OUTDIR/snapshot.json
-python -m cfas.run --offline      # no network: band, draft, voice from the snapshot
+python -m cfas.run --offline      # fully offline: band, draft, voice from the snapshot
 ```
 
-The default run is offline-first: it uses a fresh snapshot if one is on disk, refreshes it live when it is stale and a connection is there, and falls back to the last snapshot with a loud warning when the line is down. The snapshot stores the **raw** inputs, not the finished `P`, `V` and `theta`, so you can re-tune `alpha`, `beta`, `gamma`, `prob_lean`, the rain triggers, even a trained `--vuln-head` probe, and re-band the same snapshot offline without fetching again.
+The default run is offline-first: it uses a fresh snapshot when one is on disk, refreshes it live when it is stale and a connection is there, and otherwise broadcasts from the last snapshot with a clear staleness warning. The snapshot stores the **raw** inputs, the rainfall amount, soil moisture and the TESSERA embedding, so you can re-tune `alpha`, `beta`, `gamma`, `prob_lean`, the rain triggers, even a trained `--vuln-head` probe, and re-band the same snapshot offline on demand.
 
 Soil moisture and rainfall lose meaning as they age, so `--offline` refuses a snapshot older than `snapshot_max_age_hours` (default 24) unless you pass `--allow-stale`. TESSERA is annual, so its embedding ages slowly. The pattern in the field is a small cron that runs `--snapshot` whenever there is signal, leaving the station ready to broadcast through the storm that takes the tower down. See `snapshot.example.json` for the shape of the file.
 
@@ -169,20 +169,20 @@ Next steps stay close to the ground:
 
 ## Scope and limitations
 
-What CFAS is designed to do, and where its edges are.
+How CFAS behaves at its edges, so you get the most from it.
 
-- CFAS forecasts risk ahead of the water rather than confirming a flood in progress, so its value is lead time. It reads best alongside what people see on the ground.
+- CFAS forecasts risk ahead of the water, so its value is lead time, and it reads best beside what people see on the ground.
 - The vulnerability and hydrology terms ship with transparent proxies and sharpen as you add a trained probe and a river model.
 - The 65 to 75 percent hit-rate is the design target, and the built-in calibrator tunes it to each region against confirmed community call-ins.
-- Offline runs work from the most recent snapshot, and the system flags the data's age, so a stale run is never mistaken for a fresh one.
+- Offline runs work from the most recent snapshot, and the system flags the data's age, so you always know how fresh it is.
 - Every translated line is reviewed by a native speaker before broadcast, and quality varies by language; Twi is served through Akan.
-- Where an offline voice for a language is unavailable, the audio falls back to a clear English-accented voice.
+- Each language carries its own offline voice where one exists, and a clear English-accented voice covers the rest.
 
-CFAS works alongside official warnings and local judgement, strengthening the last mile rather than replacing it.
+CFAS works alongside official warnings and local judgement, strengthening the last mile.
 
 ## Tests
 
-The suite runs offline, with no keys and no model downloads.
+The suite runs offline, free of keys and downloads.
 
 ```bash
 pip install pytest pocketsphinx   # pocketsphinx is optional, for the real ASR check
