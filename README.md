@@ -4,6 +4,16 @@ Climate intelligence for the communities that stand closest to the water.
 
 CFAS turns a satellite flood forecast into a spoken warning in a language a family already trusts, carried over the radio they already own. The forecast exists long before the water arrives. The work that remains is the bridge between that forecast and the household it protects, and this repository is that bridge, small enough to run on a single box at a village radio station.
 
+## The problem
+
+Floods are the most frequent and far-reaching of climate disasters, and a warming climate is making the rains that cause them heavier and harder to predict. The communities that live closest to the rivers carry the most of this, and they are often the ones with the least warning.
+
+The forecast is no longer the hard part. Satellites and weather models can see a flood forming days before the water arrives. The failure is in the last stretch: the forecast exists, but it does not reach the household in time, in a language the family understands, over a channel they actually have. A prediction sitting on a server protects no one.
+
+This gap is not new. Early-warning systems were built first for cities, for the official language, for people who are online and reading. The households nearest the water, rural, often off the grid, speaking a language the system never covered, are the ones the warning has always passed over. The WMO calls this the early-warning gap, and it falls hardest on the people most exposed (WMO & UNDRR, 2023).
+
+So the lives lost to floods are rarely lost because no one saw it coming. They are lost because the warning never arrived in a form someone could act on. CFAS is built for that last stretch. It takes a forecast that already exists and carries it the rest of the way home: into a clear risk level, a calm spoken message, the local language, and the radio a family already owns, on a small device at the station closest to them.
+
 ## The idea
 
 A forecast becomes protection once a family hears it, believes it, and still has time to act. So CFAS keeps the whole chain short and local:
