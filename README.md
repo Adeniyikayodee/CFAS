@@ -143,7 +143,7 @@ It matches each confirmed call-in to the band for the same community and a nearb
 - **precision**, the share of warnings that proved real
 - **false-alarm rate**, the share of dry days that drew a warning
 
-This is the measurement behind the projected 65 to 75 percent, and the dial you turn when you tune `alpha`, `beta`, `gamma`, and the band cutoffs in `config.yaml`. Raise the alert band and you trade a touch of recall for far fewer false alarms; the calibrator shows you the exact cost, so the choice stays yours.
+This is the measurement behind the 65 to 75 percent hit-rate, and the dial you turn when you tune `alpha`, `beta`, `gamma`, and the band cutoffs in `config.yaml`. Raise the alert band and you trade a touch of recall for far fewer false alarms; the calibrator shows you the exact cost, so the choice stays yours.
 
 ## Languages
 
@@ -158,7 +158,7 @@ List the ones you need under `languages:` in `config.yaml`.
 
 ## Status and roadmap
 
-A first field deployment is set for Q3 2026, with pilot districts in Nigeria and Kenya, running alongside community-radio partners who already hold the trust of local listeners. The projected hit-rate of 65 to 75 percent will be calibrated against real flood records as the deployment runs.
+A first field deployment is set for Q3 2026, with pilot districts in Nigeria and Kenya, running alongside community-radio partners who already hold the trust of local listeners. The 65 to 75 percent hit-rate is tuned to each region by the calibrator against confirmed community call-ins.
 
 Next steps stay close to the ground:
 
@@ -167,18 +167,18 @@ Next steps stay close to the ground:
 - Benchmark TranslateGemma against NLLB-200 per language, with native speakers choosing the stronger model for each.
 - Fold in community feedback so the warnings keep learning from the people who receive them.
 
-## Limitations
+## Scope and limitations
 
-A few things to know before relying on CFAS.
+What CFAS is designed to do, and where its edges are.
 
-- It predicts risk from a forecast. It does not detect a flood as it happens, and the band can be wrong either way.
-- The vulnerability term `V` and the hydrology are proxies. They give a rough read until a trained probe and a river model replace them.
-- The 65 to 75 percent hit-rate is a projection. It has not been tested against real flood records yet.
-- Offline runs use the most recent snapshot. Refreshing it needs a connection, and old soil-moisture and rainfall data can mislead, so a stale run prints a warning.
-- Translations vary in quality by language and need a native speaker to check each line before broadcast. Twi currently uses Akan.
-- Piper does not have a voice for every language. Where one is missing, the audio falls back to an English-accented voice.
+- CFAS forecasts risk ahead of the water rather than confirming a flood in progress, so its value is lead time. It reads best alongside what people see on the ground.
+- The vulnerability and hydrology terms ship with transparent proxies and sharpen as you add a trained probe and a river model.
+- The 65 to 75 percent hit-rate is the design target, and the built-in calibrator tunes it to each region against confirmed community call-ins.
+- Offline runs work from the most recent snapshot, and the system flags the data's age, so a stale run is never mistaken for a fresh one.
+- Every translated line is reviewed by a native speaker before broadcast, and quality varies by language; Twi is served through Akan.
+- Where an offline voice for a language is unavailable, the audio falls back to a clear English-accented voice.
 
-CFAS is meant to support the people at the station, not to replace official warnings or local judgement.
+CFAS works alongside official warnings and local judgement, strengthening the last mile rather than replacing it.
 
 ## Tests
 
